@@ -1,18 +1,13 @@
-name: CMake CI
+name: Docker CI
 
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'
   pull_request:
     branches: [ main ]
 
-permissions:
-  contents: write
-
 jobs:
-  build:
+  docker:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,102 +16,13 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure
-        run: cmake -H. -B_build -DCMAKE_INSTALL_PREFIX=_install -DBUILD_TESTS=ON
+      - name: Build Docker image
+        run: docker build -t logger .
 
-      - name: Build
-        run: cmake --build _build
-
-      - name: Run tests
-        run: cmake --build _build --target test -- ARGS=--verbose
-
-      - name: Install
-        run: cmake --build _build --target install
-
-      - name: Build package
-        run: cmake --build _build --target package
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            generators: "TGZ;ZIP;DEB;RPM"
-          - os: macos-latest
-            generators: "DragNDrop"
-          - os: windows-latest
-            generators: "WIX"
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install RPM tools
-        if: runner.os == 'Linux'
+      - name: Run Docker container
         run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm
+          mkdir -p logs
+          printf "text1\ntext2\ntext3\n" | docker run -i -v "$(pwd)/logs:/home/logs" logger
 
-      - name: Install WiX
-        if: runner.os == 'Windows'
-        run: choco install wixtoolset -y
-
-      - name: Configure
-        run: cmake -H. -B_build -DCMAKE_INSTALL_PREFIX=_install -DBUILD_TESTS=ON
-
-      - name: Build
-        run: cmake --build _build --config Release
-
-      - name: Run tests
-        run: cmake --build _build --target test --config Release -- ARGS=--verbose
-
-      - name: Build packages on Linux and macOS
-        if: runner.os != 'Windows'
-        run: |
-          cd _build
-          cpack -G "${{ matrix.generators }}"
-
-      - name: Build source packages on Linux
-        if: runner.os == 'Linux'
-        run: |
-          cd _build
-          cpack --config CPackSourceConfig.cmake -G "TGZ;ZIP"
-
-      - name: Build packages on Windows
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          cd _build
-          cpack -G "${{ matrix.generators }}"
-
-      - name: Collect artifacts on Linux and macOS
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p artifacts
-          find _build -maxdepth 1 -type f \( \
-            -name "*.tar.gz" -o \
-            -name "*.zip" -o \
-            -name "*.deb" -o \
-            -name "*.rpm" -o \
-            -name "*.dmg" \
-          \) -exec cp {} artifacts/ \;
-
-      - name: Collect artifacts on Windows
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force artifacts
-          Get-ChildItem _build -Recurse -File -Include *.msi,*.zip,*.tar.gz | Copy-Item -Destination artifacts
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
+      - name: Check log file
+        run: cat logs/log.txt

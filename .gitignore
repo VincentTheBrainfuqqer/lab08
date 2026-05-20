@@ -3,6 +3,7 @@ _builds/
 _install/
 _logs/
 artifacts/
+logs/
 
 *.tar.gz
 *.zip
