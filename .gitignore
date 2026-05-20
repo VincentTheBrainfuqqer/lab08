@@ -1,5 +1,7 @@
 _build/
+_builds/
 _install/
+_logs/
 artifacts/
 
 *.tar.gz

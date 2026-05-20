@@ -1,232 +1,285 @@
-# Лабораторная работа №6
+# Лабораторная работа №7
 
-![CMake CI](https://github.com/VincentTheBrainfuqqer/lab06/actions/workflows/ci.yml/badge.svg)
+[![CMake CI](https://github.com/VincentTheBrainfuqqer/lab07/actions/workflows/ci.yml/badge.svg)](https://github.com/VincentTheBrainfuqqer/lab07/actions/workflows/ci.yml)
 
 ## Цель работы
 
-Изучить средства пакетирования C++ проектов на примере CPack.
+Изучить систему управления пакетами Hunter и научиться подключать внешние зависимости через пакетный менеджер.
 
 ## Задание
 
 В ходе лабораторной работы необходимо:
 
-* создать публичный репозиторий `lab06`;
-* использовать проект из предыдущей лабораторной работы как основу;
-* настроить CPack;
-* собрать пакет проекта;
-* подготовить отчет.
+- создать публичный репозиторий `lab07`;
+- взять за основу проект из предыдущей лабораторной работы;
+- подключить Hunter;
+- заменить локальное подключение GTest на подключение через Hunter;
+- добавить локальную конфигурацию Hunter;
+- добавить демонстрационное приложение `demo`;
+- подключить Polly;
+- проверить сборку проекта и запуск тестов.
 
-В домашней части необходимо настроить сборку пакетов для релизов. При создании git-тега должны собираться архивы исходного кода и пакеты с бинарным файлом `solver`.
+Домашняя часть в данной работе не выполнялась.
 
 ## Выполнение работы
 
-Сначала был создан репозиторий `lab06`, после чего в него была скопирована структура проекта из лабораторной работы №5.
+Сначала был создан репозиторий `lab07`, после чего в него была перенесена структура проекта из лабораторной работы №6.
 
-    git clone --recurse-submodules https://github.com/VincentTheBrainfuqqer/lab05 projects/lab06
-    cd projects/lab06
-    git remote remove origin
-    git remote add origin https://github.com/VincentTheBrainfuqqer/lab06.git
-    git branch -M main
+~~~bash
+git clone --recurse-submodules https://github.com/VincentTheBrainfuqqer/lab06 projects/lab07
+cd projects/lab07
+git remote remove origin
+git remote add origin https://github.com/VincentTheBrainfuqqer/lab07.git
+git branch -M main
+~~~
 
-В файл `CMakeLists.txt` была добавлена информация о версии проекта.
+После этого были удалены временные файлы сборки.
 
-    set(PRINT_VERSION_MAJOR 0)
-    set(PRINT_VERSION_MINOR 1)
-    set(PRINT_VERSION_PATCH 0)
-    set(PRINT_VERSION_TWEAK 0)
+~~~bash
+rm -rf _build _builds artifacts
+~~~
 
-    set(PRINT_VERSION
-        ${PRINT_VERSION_MAJOR}.${PRINT_VERSION_MINOR}.${PRINT_VERSION_PATCH}.${PRINT_VERSION_TWEAK}
-    )
+Для подключения Hunter был создан каталог `cmake`, после чего был загружен файл `HunterGate.cmake`.
 
-    set(PRINT_VERSION_STRING "v${PRINT_VERSION}")
+~~~bash
+mkdir -p cmake
+wget https://raw.githubusercontent.com/cpp-pm/gate/master/cmake/HunterGate.cmake -O cmake/HunterGate.cmake
+~~~
 
-Также был добавлен исполняемый файл `solver`.
+В файл `CMakeLists.txt` было добавлено подключение Hunter.
 
-    add_executable(solver examples/example1.cpp)
-    target_link_libraries(solver print)
+~~~cmake
+include("cmake/HunterGate.cmake")
 
-После этого были добавлены правила установки для библиотеки, заголовочного файла и исполняемого файла.
+HunterGate(
+    URL "https://github.com/cpp-pm/hunter/archive/v0.23.251.tar.gz"
+    SHA1 "5659b15dc0884d4b03dbd95710e6a1fa0fc3258d"
+    LOCAL
+)
+~~~
 
-    install(TARGETS print
-        ARCHIVE DESTINATION lib
-        LIBRARY DESTINATION lib
-    )
+После этого локальная копия GTest была удалена из проекта.
 
-    install(TARGETS solver
-        RUNTIME DESTINATION bin
-    )
+~~~bash
+git rm -rf third-party/gtest
+~~~
 
-    install(FILES include/print.hpp
-        DESTINATION include
-    )
+Вместо локального подключения GTest было добавлено подключение через Hunter.
 
-Для настройки CPack был создан файл `CPackConfig.cmake`.
+~~~cmake
+hunter_add_package(GTest)
+find_package(GTest CONFIG REQUIRED)
+~~~
 
-    include(InstallRequiredSystemLibraries)
+Также была изменена линковка тестов.
 
-    set(CPACK_PACKAGE_NAME "solver")
-    set(CPACK_PACKAGE_VENDOR "VincentTheBrainfuqqer")
-    set(CPACK_PACKAGE_CONTACT "VincentTheBrainfuqqer@users.noreply.github.com")
+~~~cmake
+target_link_libraries(check print GTest::main)
+~~~
 
-    set(CPACK_PACKAGE_VERSION_MAJOR ${PRINT_VERSION_MAJOR})
-    set(CPACK_PACKAGE_VERSION_MINOR ${PRINT_VERSION_MINOR})
-    set(CPACK_PACKAGE_VERSION_PATCH ${PRINT_VERSION_PATCH})
-    set(CPACK_PACKAGE_VERSION_TWEAK ${PRINT_VERSION_TWEAK})
-    set(CPACK_PACKAGE_VERSION ${PRINT_VERSION})
+Теперь библиотека GTest не хранится внутри проекта, а загружается автоматически через Hunter во время конфигурации проекта.
 
-    set(CPACK_PACKAGE_DESCRIPTION_FILE ${CMAKE_CURRENT_SOURCE_DIR}/DESCRIPTION)
-    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "simple console solver application")
+Для настройки версии пакета был создан файл `cmake/Hunter/config.cmake`.
 
-    set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
-    set(CPACK_RESOURCE_FILE_README ${CMAKE_CURRENT_SOURCE_DIR}/README.md)
+~~~cmake
+hunter_config(GTest VERSION 1.7.0-hunter-9)
+~~~
 
-    set(CPACK_PACKAGE_FILE_NAME
-        "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}"
-    )
+Далее было создано демонстрационное приложение `demo`.
 
-    set(CPACK_SOURCE_PACKAGE_FILE_NAME
-        "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-source"
-    )
+~~~bash
+mkdir demo
+~~~
 
-    set(CPACK_SOURCE_GENERATOR "TGZ;ZIP")
+Файл `demo/main.cpp`:
 
-    set(CPACK_SOURCE_IGNORE_FILES
-        "/_build/"
-        "/artifacts/"
-        "/.git/"
-        "/.github/"
-        "~$"
-    )
+~~~cpp
+#include <print.hpp>
 
-    if(UNIX AND NOT APPLE)
-        set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
-    endif()
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <string>
 
-    set(CPACK_RPM_PACKAGE_NAME "solver")
-    set(CPACK_RPM_PACKAGE_LICENSE "MIT")
-    set(CPACK_RPM_PACKAGE_GROUP "Development/Tools")
-    set(CPACK_RPM_PACKAGE_RELEASE 1)
-    set(CPACK_RPM_CHANGELOG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/ChangeLog.md)
+int main()
+{
+    const char* log_path = std::getenv("LOG_PATH");
 
-    set(CPACK_DEBIAN_PACKAGE_NAME "solver")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "VincentTheBrainfuqqer")
-    set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
-    set(CPACK_DEBIAN_PACKAGE_RELEASE 1)
+    if (log_path == nullptr)
+    {
+        std::cerr << "undefined environment variable: LOG_PATH" << std::endl;
+        return 1;
+    }
 
-    set(CPACK_WIX_UPGRADE_GUID "7D4A72B7-56C0-4C6A-9B34-9E2B71AF0D10")
+    std::string text;
 
-    include(CPack)
+    while (std::cin >> text)
+    {
+        std::ofstream out{log_path, std::ios_base::app};
+        print(text, out);
+        out << std::endl;
+    }
 
-В конец файла `CMakeLists.txt` был подключен файл с настройками CPack.
+    return 0;
+}
+~~~
 
-    include(CPackConfig.cmake)
+Приложение считывает слова из стандартного ввода и записывает их в файл. Путь к файлу задается через переменную окружения `LOG_PATH`.
 
-Также были созданы файлы `DESCRIPTION` и `ChangeLog.md`.
+В `CMakeLists.txt` были добавлены правила сборки и установки приложения `demo`.
 
-Файл `DESCRIPTION` содержит краткое описание проекта.
+~~~cmake
+add_executable(demo ${CMAKE_CURRENT_SOURCE_DIR}/demo/main.cpp)
+target_link_libraries(demo print)
 
-    Solver is a simple console application based on the print library.
+install(TARGETS demo
+    RUNTIME DESTINATION bin
+)
+~~~
 
-    The project contains a static C++ library, examples, tests and CPack configuration.
-    It is used to demonstrate packaging with CPack and automatic release publishing with GitHub Actions.
+После этого был подключен Polly.
 
-Файл `ChangeLog.md` содержит информацию о первом релизе.
+~~~bash
+mkdir -p tools
+git submodule add https://github.com/ruslo/polly tools/polly
+~~~
 
-    * Wed May 13 2026 VincentTheBrainfuqqer <VincentTheBrainfuqqer@users.noreply.github.com> 0.1.0.0
-    - Initial release
-    - Added CPack configuration
-    - Added solver executable
-    - Added release packages
+Polly был добавлен как git submodule, поэтому информация о нем появилась в файле `.gitmodules`.
+
+~~~ini
+[submodule "tools/polly"]
+	path = tools/polly
+	url = https://github.com/ruslo/polly
+~~~
+
+Для проверки Polly были выполнены команды:
+
+~~~bash
+python3 tools/polly/bin/polly.py --test
+python3 tools/polly/bin/polly.py --install
+python3 tools/polly/bin/polly.py --toolchain clang-cxx14
+~~~
 
 ## Сборка проекта
 
 Для сборки проекта использовались команды:
 
-    cmake -H. -B_build -DBUILD_TESTS=ON
-    cmake --build _build
+~~~bash
+cmake -H. -B_builds -DBUILD_TESTS=ON
+cmake --build _builds
+~~~
 
 Для запуска тестов использовалась команда:
 
-    cmake --build _build --target test -- ARGS=--verbose
+~~~bash
+cmake --build _builds --target test
+~~~
 
-Для сборки пакета использовалась команда:
+Во время конфигурации проекта Hunter автоматически загружает нужную версию GTest и подключает ее к проекту.
 
-    cmake --build _build --target package
+Также была проверена директория Hunter.
 
-После сборки в директории `_build` был создан архив проекта.
+~~~bash
+ls -la $HOME/.hunter
+~~~
+
+## Проверка demo
+
+Для проверки демонстрационного приложения была задана переменная окружения `LOG_PATH`.
+
+~~~bash
+export LOG_PATH=log.txt
+~~~
+
+После этого был выполнен запуск приложения.
+
+~~~bash
+echo "hello world" | ./_builds/demo
+cat log.txt
+~~~
+
+В результате в файл `log.txt` были записаны слова, переданные во входной поток.
+
+~~~text
+hello
+world
+~~~
 
 ## GitHub Actions
 
-Вместо Travis CI и AppVeyor был использован GitHub Actions.
+Для автоматической проверки проекта используется GitHub Actions.
 
-Для этого был создан файл:
+Файл workflow расположен по пути:
 
-    .github/workflows/ci.yml
+~~~text
+.github/workflows/ci.yml
+~~~
 
-Обычная сборка запускается при каждом push в ветку `main`.
+При каждом push в ветку `main` выполняются следующие действия:
 
-При создании git-тега вида `v*` запускается сборка релиза.
+- клонирование репозитория;
+- загрузка submodule;
+- конфигурация проекта через CMake;
+- сборка проекта;
+- запуск тестов;
+- установка проекта;
+- сборка пакета.
 
-На Linux собираются пакеты:
-
-* `.tar.gz`
-* `.zip`
-* `.deb`
-* `.rpm`
-
-На macOS собирается пакет:
-
-* `.dmg`
-
-На Windows собирается пакет:
-
-* `.msi`
-
-После сборки все файлы автоматически загружаются в GitHub Releases.
-
-Для создания релиза использовались команды:
-
-    git tag v0.1.0.0
-    git push origin v0.1.0.0
+Это позволяет автоматически проверять, что проект собирается и тесты проходят успешно.
 
 ## Структура проекта
 
-    lab06/
-    ├── .github/
-    │   └── workflows/
-    │       └── ci.yml
-    ├── examples/
-    │   ├── example1.cpp
-    │   └── example2.cpp
-    ├── include/
-    │   └── print.hpp
-    ├── sources/
-    │   └── print.cpp
-    ├── tests/
-    │   └── test1.cpp
-    ├── third-party/
-    │   └── gtest/
-    ├── CMakeLists.txt
-    ├── CPackConfig.cmake
-    ├── ChangeLog.md
-    ├── DESCRIPTION
-    ├── LICENSE
-    └── README.md
+~~~text
+lab07/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── cmake/
+│   ├── Hunter/
+│   │   └── config.cmake
+│   └── HunterGate.cmake
+├── demo/
+│   └── main.cpp
+├── examples/
+│   ├── example1.cpp
+│   └── example2.cpp
+├── include/
+│   └── print.hpp
+├── sources/
+│   └── print.cpp
+├── tests/
+│   └── test1.cpp
+├── tools/
+│   └── polly/
+├── .gitignore
+├── .gitmodules
+├── CMakeLists.txt
+├── CPackConfig.cmake
+├── ChangeLog.md
+├── DESCRIPTION
+├── LICENSE
+└── README.md
+~~~
 
 ## Результат
 
 В результате выполнения лабораторной работы:
 
-* был создан проект `lab06`;
-* была настроена упаковка проекта с помощью CPack;
-* был добавлен исполняемый файл `solver`;
-* была настроена сборка пакетов;
-* была настроена автоматическая публикация релизов через GitHub Actions;
-* проект успешно собирается и проходит тестирование.
+- был создан репозиторий `lab07`;
+- был подключен Hunter;
+- локальная зависимость `third-party/gtest` была удалена;
+- GTest был подключен через Hunter;
+- была добавлена локальная конфигурация Hunter;
+- было создано демонстрационное приложение `demo`;
+- был подключен Polly;
+- проект успешно собирается;
+- тесты успешно проходят;
+- проект проверяется через GitHub Actions.
 
 ## Вывод
 
-В ходе лабораторной работы были изучены основы пакетирования C++ проекта с помощью CPack.
+В ходе лабораторной работы была изучена система управления пакетами Hunter.
 
-Также была выполнена домашняя часть: при создании git-тега GitHub Actions автоматически собирает архивы исходного кода и бинарные пакеты для разных операционных систем.
+Было показано, как подключать внешние библиотеки без хранения их исходного кода внутри проекта. Локальное подключение GTest было заменено на подключение через Hunter. Также была добавлена локальная конфигурация Hunter, позволяющая указать нужную версию пакета.
+
+Дополнительно был подключен Polly, который позволяет использовать готовые toolchain для сборки проекта. В результате проект стал чище, так как внешние зависимости теперь управляются через пакетный менеджер, а не хранятся напрямую в репозитории.
