@@ -1,285 +1,285 @@
-# Лабораторная работа №7
-
-[![CMake CI](https://github.com/VincentTheBrainfuqqer/lab07/actions/workflows/ci.yml/badge.svg)](https://github.com/VincentTheBrainfuqqer/lab07/actions/workflows/ci.yml)
+# Лабораторная работа №8
 
 ## Цель работы
 
-Изучить систему управления пакетами Hunter и научиться подключать внешние зависимости через пакетный менеджер.
+Изучить основы контейнеризации приложений с помощью Docker и научиться запускать собранное C++ приложение внутри Docker-контейнера.
 
 ## Задание
 
 В ходе лабораторной работы необходимо:
 
-- создать публичный репозиторий `lab07`;
+- создать публичный репозиторий `lab08`;
 - взять за основу проект из предыдущей лабораторной работы;
-- подключить Hunter;
-- заменить локальное подключение GTest на подключение через Hunter;
-- добавить локальную конфигурацию Hunter;
-- добавить демонстрационное приложение `demo`;
-- подключить Polly;
-- проверить сборку проекта и запуск тестов.
+- создать `Dockerfile`;
+- собрать Docker-образ с именем `logger`;
+- запустить контейнер на основе созданного образа;
+- подключить директорию с логами через volume;
+- проверить запись данных в лог-файл;
+- настроить автоматическую проверку проекта через GitHub Actions.
 
 Домашняя часть в данной работе не выполнялась.
 
 ## Выполнение работы
 
-Сначала был создан репозиторий `lab07`, после чего в него была перенесена структура проекта из лабораторной работы №6.
+Сначала был создан репозиторий `lab08`, после чего в него был перенесен проект из лабораторной работы №7.
 
-~~~bash
-git clone --recurse-submodules https://github.com/VincentTheBrainfuqqer/lab06 projects/lab07
-cd projects/lab07
-git remote remove origin
-git remote add origin https://github.com/VincentTheBrainfuqqer/lab07.git
-git branch -M main
-~~~
+    cd ~/VincentTheBrainfuqqer/workspace/projects
+    git clone --recurse-submodules https://github.com/VincentTheBrainfuqqer/lab07 lab08
+    cd lab08
 
-После этого были удалены временные файлы сборки.
+После этого был изменен удаленный репозиторий.
 
-~~~bash
-rm -rf _build _builds artifacts
-~~~
+    git remote remove origin
+    git remote add origin https://github.com/VincentTheBrainfuqqer/lab08.git
+    git branch -M main
 
-Для подключения Hunter был создан каталог `cmake`, после чего был загружен файл `HunterGate.cmake`.
+Далее были удалены временные файлы сборки и служебные каталоги, которые не должны попадать в репозиторий.
 
-~~~bash
-mkdir -p cmake
-wget https://raw.githubusercontent.com/cpp-pm/gate/master/cmake/HunterGate.cmake -O cmake/HunterGate.cmake
-~~~
+    rm -rf _build _builds _install _logs artifacts logs
 
-В файл `CMakeLists.txt` было добавлено подключение Hunter.
+Также был обновлен файл `.gitignore`.
 
-~~~cmake
-include("cmake/HunterGate.cmake")
+    _build/
+    _builds/
+    _install/
+    _logs/
+    artifacts/
+    logs/
 
-HunterGate(
-    URL "https://github.com/cpp-pm/hunter/archive/v0.23.251.tar.gz"
-    SHA1 "5659b15dc0884d4b03dbd95710e6a1fa0fc3258d"
-    LOCAL
-)
-~~~
+    *.tar.gz
+    *.zip
+    *.deb
+    *.rpm
+    *.dmg
+    *.msi
 
-После этого локальная копия GTest была удалена из проекта.
+    log.txt
+    file.txt
 
-~~~bash
-git rm -rf third-party/gtest
-~~~
+## Создание Dockerfile
 
-Вместо локального подключения GTest было добавлено подключение через Hunter.
+Для сборки и запуска проекта внутри контейнера был создан файл `Dockerfile`.
 
-~~~cmake
-hunter_add_package(GTest)
-find_package(GTest CONFIG REQUIRED)
-~~~
+    FROM ubuntu:18.04
 
-Также была изменена линковка тестов.
+    RUN apt-get update && apt-get install -y \
+        build-essential \
+        cmake \
+        git \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
 
-~~~cmake
-target_link_libraries(check print GTest::main)
-~~~
+    COPY . /print
+    WORKDIR /print
 
-Теперь библиотека GTest не хранится внутри проекта, а загружается автоматически через Hunter во время конфигурации проекта.
+    RUN cmake -H. -B_build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=_install
+    RUN cmake --build _build
+    RUN cmake --build _build --target install
 
-Для настройки версии пакета был создан файл `cmake/Hunter/config.cmake`.
+    ENV LOG_PATH=/home/logs/log.txt
 
-~~~cmake
-hunter_config(GTest VERSION 1.7.0-hunter-9)
-~~~
+    VOLUME /home/logs
 
-Далее было создано демонстрационное приложение `demo`.
+    WORKDIR /print/_install/bin
 
-~~~bash
-mkdir demo
-~~~
+    ENTRYPOINT ["./demo"]
 
-Файл `demo/main.cpp`:
+В данном файле используется базовый образ `ubuntu:18.04`.
 
-~~~cpp
-#include <print.hpp>
+В контейнер устанавливаются необходимые инструменты для сборки проекта:
 
-#include <cstdlib>
-#include <fstream>
-#include <iostream>
-#include <string>
+- `build-essential`;
+- `cmake`;
+- `git`;
+- `ca-certificates`.
 
-int main()
-{
-    const char* log_path = std::getenv("LOG_PATH");
+После этого исходные файлы проекта копируются в каталог `/print`.
 
-    if (log_path == nullptr)
-    {
-        std::cerr << "undefined environment variable: LOG_PATH" << std::endl;
-        return 1;
-    }
+    COPY . /print
+    WORKDIR /print
 
-    std::string text;
+Затем выполняется конфигурация проекта через CMake.
 
-    while (std::cin >> text)
-    {
-        std::ofstream out{log_path, std::ios_base::app};
-        print(text, out);
-        out << std::endl;
-    }
+    RUN cmake -H. -B_build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=_install
 
-    return 0;
-}
-~~~
+После конфигурации выполняется сборка проекта.
 
-Приложение считывает слова из стандартного ввода и записывает их в файл. Путь к файлу задается через переменную окружения `LOG_PATH`.
+    RUN cmake --build _build
 
-В `CMakeLists.txt` были добавлены правила сборки и установки приложения `demo`.
+Затем выполняется установка проекта во внутреннюю директорию `_install`.
 
-~~~cmake
-add_executable(demo ${CMAKE_CURRENT_SOURCE_DIR}/demo/main.cpp)
-target_link_libraries(demo print)
+    RUN cmake --build _build --target install
 
-install(TARGETS demo
-    RUNTIME DESTINATION bin
-)
-~~~
+Для демонстрационного приложения задается переменная окружения `LOG_PATH`.
 
-После этого был подключен Polly.
+    ENV LOG_PATH=/home/logs/log.txt
 
-~~~bash
-mkdir -p tools
-git submodule add https://github.com/ruslo/polly tools/polly
-~~~
+Она указывает путь к файлу, в который приложение будет записывать данные.
 
-Polly был добавлен как git submodule, поэтому информация о нем появилась в файле `.gitmodules`.
+Также создается volume.
 
-~~~ini
-[submodule "tools/polly"]
-	path = tools/polly
-	url = https://github.com/ruslo/polly
-~~~
+    VOLUME /home/logs
 
-Для проверки Polly были выполнены команды:
+Это нужно для того, чтобы файл логов сохранялся не только внутри контейнера, но и был доступен на основной системе.
 
-~~~bash
-python3 tools/polly/bin/polly.py --test
-python3 tools/polly/bin/polly.py --install
-python3 tools/polly/bin/polly.py --toolchain clang-cxx14
-~~~
+В конце указывается рабочая директория и команда запуска.
 
-## Сборка проекта
+    WORKDIR /print/_install/bin
 
-Для сборки проекта использовались команды:
+    ENTRYPOINT ["./demo"]
 
-~~~bash
-cmake -H. -B_builds -DBUILD_TESTS=ON
-cmake --build _builds
-~~~
+При запуске контейнера автоматически запускается приложение `demo`.
 
-Для запуска тестов использовалась команда:
+## Сборка Docker-образа
 
-~~~bash
-cmake --build _builds --target test
-~~~
+Для сборки Docker-образа была использована команда:
 
-Во время конфигурации проекта Hunter автоматически загружает нужную версию GTest и подключает ее к проекту.
+    docker build -t logger .
 
-Также была проверена директория Hunter.
+Флаг `-t logger` задает имя образа.
 
-~~~bash
-ls -la $HOME/.hunter
-~~~
+В результате был создан Docker-образ `logger`, внутри которого находится собранный проект.
 
-## Проверка demo
+## Запуск контейнера
 
-Для проверки демонстрационного приложения была задана переменная окружения `LOG_PATH`.
+Для запуска контейнера была создана директория `logs`.
 
-~~~bash
-export LOG_PATH=log.txt
-~~~
+    mkdir -p logs
 
-После этого был выполнен запуск приложения.
+После этого контейнер был запущен командой:
 
-~~~bash
-echo "hello world" | ./_builds/demo
-cat log.txt
-~~~
+    docker run -it -v "$(pwd)/logs:/home/logs" logger
 
-В результате в файл `log.txt` были записаны слова, переданные во входной поток.
+Опция `-v` подключает локальный каталог `logs` к каталогу `/home/logs` внутри контейнера.
 
-~~~text
-hello
-world
-~~~
+То есть приложение внутри контейнера записывает данные в файл:
+
+    /home/logs/log.txt
+
+А на основной системе этот файл находится по пути:
+
+    logs/log.txt
+
+## Проверка работы приложения
+
+После запуска контейнера были введены строки:
+
+    text1
+    text2
+    text3
+
+После завершения ввода была выполнена проверка содержимого файла логов.
+
+    cat logs/log.txt
+
+В результате в файле появились строки, которые были переданы во входной поток приложения.
+
+    text1
+    text2
+    text3
+
+Это означает, что контейнер был запущен корректно, volume был подключен правильно, а приложение успешно записало данные в лог-файл.
 
 ## GitHub Actions
 
-Для автоматической проверки проекта используется GitHub Actions.
+Для автоматической проверки проекта был добавлен workflow GitHub Actions.
 
 Файл workflow расположен по пути:
 
-~~~text
-.github/workflows/ci.yml
-~~~
+    .github/workflows/ci.yml
+
+Содержимое файла:
+
+    name: Docker CI
+
+    on:
+      push:
+        branches: [ main ]
+      pull_request:
+        branches: [ main ]
+
+    jobs:
+      docker:
+        runs-on: ubuntu-latest
+
+        steps:
+          - name: Checkout repository
+            uses: actions/checkout@v4
+            with:
+              submodules: recursive
+
+          - name: Build Docker image
+            run: docker build -t logger .
+
+          - name: Run Docker container
+            run: |
+              mkdir -p logs
+              printf "text1\ntext2\ntext3\n" | docker run -i -v "$(pwd)/logs:/home/logs" logger
+
+          - name: Check log file
+            run: cat logs/log.txt
 
 При каждом push в ветку `main` выполняются следующие действия:
 
 - клонирование репозитория;
 - загрузка submodule;
-- конфигурация проекта через CMake;
-- сборка проекта;
-- запуск тестов;
-- установка проекта;
-- сборка пакета.
+- сборка Docker-образа;
+- запуск Docker-контейнера;
+- передача тестовых строк во входной поток приложения;
+- проверка содержимого файла логов.
 
-Это позволяет автоматически проверять, что проект собирается и тесты проходят успешно.
+Это позволяет автоматически проверить, что Docker-образ собирается, контейнер запускается, а приложение корректно записывает данные в лог-файл.
 
 ## Структура проекта
 
-~~~text
-lab07/
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── cmake/
-│   ├── Hunter/
-│   │   └── config.cmake
-│   └── HunterGate.cmake
-├── demo/
-│   └── main.cpp
-├── examples/
-│   ├── example1.cpp
-│   └── example2.cpp
-├── include/
-│   └── print.hpp
-├── sources/
-│   └── print.cpp
-├── tests/
-│   └── test1.cpp
-├── tools/
-│   └── polly/
-├── .gitignore
-├── .gitmodules
-├── CMakeLists.txt
-├── CPackConfig.cmake
-├── ChangeLog.md
-├── DESCRIPTION
-├── LICENSE
-└── README.md
-~~~
+    lab08/
+    ├── .github/
+    │   └── workflows/
+    │       └── ci.yml
+    ├── cmake/
+    │   ├── Hunter/
+    │   │   └── config.cmake
+    │   └── HunterGate.cmake
+    ├── demo/
+    │   └── main.cpp
+    ├── examples/
+    │   ├── example1.cpp
+    │   └── example2.cpp
+    ├── include/
+    │   └── print.hpp
+    ├── sources/
+    │   └── print.cpp
+    ├── tests/
+    │   └── test1.cpp
+    ├── tools/
+    │   └── polly/
+    ├── .gitignore
+    ├── .gitmodules
+    ├── CMakeLists.txt
+    ├── CPackConfig.cmake
+    ├── ChangeLog.md
+    ├── DESCRIPTION
+    ├── Dockerfile
+    ├── LICENSE
+    └── README.md
 
 ## Результат
 
 В результате выполнения лабораторной работы:
 
-- был создан репозиторий `lab07`;
-- был подключен Hunter;
-- локальная зависимость `third-party/gtest` была удалена;
-- GTest был подключен через Hunter;
-- была добавлена локальная конфигурация Hunter;
-- было создано демонстрационное приложение `demo`;
-- был подключен Polly;
-- проект успешно собирается;
-- тесты успешно проходят;
-- проект проверяется через GitHub Actions.
+- был создан репозиторий `lab08`;
+- за основу был взят проект из лабораторной работы №7;
+- был создан `Dockerfile`;
+- был собран Docker-образ `logger`;
+- был запущен Docker-контейнер;
+- был подключен volume для хранения логов;
+- была проверена запись данных в файл `logs/log.txt`;
+- была настроена автоматическая проверка через GitHub Actions.
 
 ## Вывод
 
-В ходе лабораторной работы была изучена система управления пакетами Hunter.
+В ходе лабораторной работы были изучены базовые принципы контейнеризации приложений с помощью Docker.
 
-Было показано, как подключать внешние библиотеки без хранения их исходного кода внутри проекта. Локальное подключение GTest было заменено на подключение через Hunter. Также была добавлена локальная конфигурация Hunter, позволяющая указать нужную версию пакета.
+Было показано, как описать окружение для сборки проекта в файле `Dockerfile`, как собрать Docker-образ и как запустить приложение внутри контейнера. Также был использован volume, позволяющий сохранять данные, созданные внутри контейнера, на основной системе.
 
-Дополнительно был подключен Polly, который позволяет использовать готовые toolchain для сборки проекта. В результате проект стал чище, так как внешние зависимости теперь управляются через пакетный менеджер, а не хранятся напрямую в репозитории.
+Дополнительно была настроена автоматическая проверка через GitHub Actions. При каждом push проект автоматически собирается в Docker-образ, запускается контейнер и проверяется создание лог-файла. Это позволяет убедиться, что приложение работает не только локально, но и в чистом окружении контейнера.
