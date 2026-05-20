@@ -1,0 +1,29 @@
+Start testing: May 20 15:12 EDT
+----------------------------------------------------------
+1/1 Testing: check
+1/1 Test: check
+Command: "/home/kaleka/VincentTheBrainfuqqer/workspace/projects/lab07/_builds/check"
+Directory: /home/kaleka/VincentTheBrainfuqqer/workspace/projects/lab07/_builds
+"check" start time: May 20 15:12 EDT
+Output:
+----------------------------------------------------------
+Running main() from gtest_main.cc
+[==========] Running 1 test from 1 test case.
+[----------] Global test environment set-up.
+[----------] 1 test from Print
+[ RUN      ] Print.InFileStream
+[       OK ] Print.InFileStream (0 ms)
+[----------] 1 test from Print (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test case ran. (0 ms total)
+[  PASSED  ] 1 test.
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"check" end time: May 20 15:12 EDT
+"check" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: May 20 15:12 EDT

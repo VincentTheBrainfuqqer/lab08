@@ -1,0 +1,1 @@
+/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/demo.dir/link.d CMakeFiles/demo.dir/demo/main.cpp.o -o demo  libprint.a
